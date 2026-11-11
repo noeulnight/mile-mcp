@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
+import { request } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -60,6 +61,48 @@ test("a failed HTTP startup closes its database without starting authentication 
     await app.close();
     await assert.rejects(app.store.load(), { code: "SESSION_UNAVAILABLE" });
   } finally {
+    await app.close();
+    await rm(temporary, { recursive: true, force: true });
+  }
+});
+
+test("public HTTP requires its bearer key and rejects unlisted hosts", async () => {
+  const temporary = await mkdtemp(join(tmpdir(), "mile-public-"));
+  const app = createApplication({
+    host: "127.0.0.1",
+    port: 0,
+    databasePath: join(temporary, "mile.db"),
+    apiKey: "test-access-key",
+    allowedHosts: ["127.0.0.1", "mile.lth.so"],
+  });
+  const address = await app.start("http");
+  assert.ok(address && typeof address !== "string");
+  const url = `http://127.0.0.1:${address.port}`;
+  const client = new Client({ name: "public-http-test", version: "1.0.0" });
+  try {
+    assert.equal((await fetch(`${url}/health`)).status, 200);
+    for (const authorization of ["", "Bearer wrong-access", "Bearer test-access-keZ"]) {
+      assert.equal((await fetch(`${url}/mcp`, { headers: { authorization } })).status, 401);
+    }
+    const hostStatus = (host: string) =>
+      new Promise<number | undefined>((resolve, reject) => {
+        const req = request(`${url}/health`, { headers: { host } }, (res) => {
+          res.resume();
+          resolve(res.statusCode);
+        });
+        req.on("error", reject);
+        req.end();
+      });
+    assert.equal(await hostStatus("foreign.example"), 403);
+    assert.equal(await hostStatus("mile.lth.so"), 200);
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL(`${url}/mcp`), {
+        requestInit: { headers: { Authorization: "Bearer test-access-key" } },
+      }),
+    );
+    assert.equal((await client.listTools()).tools.length, 9);
+  } finally {
+    await client.close();
     await app.close();
     await rm(temporary, { recursive: true, force: true });
   }

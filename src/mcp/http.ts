@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import type { Server } from "node:http";
 import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -9,8 +10,24 @@ export async function startHttpServer(
   service: MileService,
   host = "127.0.0.1",
   port = 8000,
+  options: { apiKey?: string; allowedHosts?: string[] } = {},
 ): Promise<Server> {
-  const app = createMcpExpressApp({ host, allowedHosts: ["127.0.0.1", "localhost", "[::1]"] });
+  const app = createMcpExpressApp({
+    host,
+    allowedHosts: options.allowedHosts ?? ["127.0.0.1", "localhost", "[::1]"],
+  });
+  if (options.apiKey) {
+    const expected = Buffer.from(`Bearer ${options.apiKey}`);
+    app.use("/mcp", (req, res, next) => {
+      const provided = Buffer.from(req.headers.authorization ?? "");
+      if (provided.length !== expected.length || !timingSafeEqual(provided, expected)) {
+        res.setHeader("WWW-Authenticate", "Bearer");
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+      next();
+    });
+  }
   app.get("/health", (_req, res) => {
     res.json({ status: "ok" });
   });

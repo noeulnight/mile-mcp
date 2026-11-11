@@ -48,7 +48,7 @@ export function createApplication(config: AppConfig, fetcher: typeof fetch = fet
   async function start(mode: "http" | "stdio") {
     try {
       if (mode === "http") {
-        listener = await startHttpServer(service, config.host, config.port);
+        listener = await startHttpServer(service, config.host, config.port, config);
         console.error(JSON.stringify({ event: "mcp_http_started", port: config.port }));
       } else {
         server = createServer(service);
