@@ -1,0 +1,21 @@
+name: mile-mcp
+services:
+  mile-mcp:
+    build: .
+    image: mile-mcp:local
+    restart: unless-stopped
+    init: true
+    ports:
+      - "127.0.0.1:${MILE_MCP_PORT:-18787}:8000"
+    volumes:
+      - mile-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  mile-data:
