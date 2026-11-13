@@ -29,7 +29,7 @@ test("the HTTP MCP supports real initialization, tool discovery and room queries
   try {
     assert.equal((await fetch(`${url}/health`)).status, 200);
     await client.connect(new StreamableHTTPClientTransport(new URL(`${url}/mcp`)));
-    assert.equal((await client.listTools()).tools.length, 9);
+    assert.equal((await client.listTools()).tools.length, 10);
     const result = await client.callTool({ name: "list_meeting_rooms", arguments: {} });
     assert.ok(!result.isError);
     assert.equal((await fetch(`${url}/mcp`)).status, 405);
@@ -100,7 +100,7 @@ test("public HTTP requires its bearer key and rejects unlisted hosts", async () 
         requestInit: { headers: { Authorization: "Bearer test-access-key" } },
       }),
     );
-    assert.equal((await client.listTools()).tools.length, 9);
+    assert.equal((await client.listTools()).tools.length, 10);
   } finally {
     await client.close();
     await app.close();

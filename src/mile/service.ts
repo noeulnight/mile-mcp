@@ -19,6 +19,14 @@ export const detailInput = {
   reservationId: id.optional(),
   googleEventId: id.optional(),
 };
+export const cancelInput = {
+  ...detailInput,
+  scope: z
+    .enum(["SINGLE", "THIS", "THIS_AND_FUTURE", "ALL"])
+    .describe(
+      "SINGLE: 단건 예약, THIS: 반복 예약의 이번 일정만, THIS_AND_FUTURE: 이번부터 이후 일정, ALL: 전체 반복 일정. 사용자가 승인한 범위를 반드시 지정하세요.",
+    ),
+};
 export const myInput = {
   period: z.enum(["upcoming", "completed"]).default("upcoming"),
   startDate: dateSchema,
@@ -335,6 +343,19 @@ export class MileService {
       meetingReservationId: input.reservationId ?? "",
       googleEventId: input.googleEventId ?? "",
     });
+  }
+
+  async cancelReservation(input: z.infer<z.ZodObject<typeof cancelInput>>) {
+    if (!input.reservationId && !input.googleEventId) {
+      throw new MileError("INVALID_INPUT", "reservationId 또는 googleEventId를 입력해 주세요.");
+    }
+    await this.api.cancelReservation({
+      googleEventId: input.googleEventId ?? "",
+      meetingReservationId: input.reservationId ?? "",
+      meetingRoomId: input.roomId,
+      ...(input.scope === "SINGLE" ? {} : { editOption: input.scope }),
+    });
+    return { cancelled: true, scope: input.scope };
   }
 
   async listMyReservations(input: z.infer<z.ZodObject<typeof myInput>>) {

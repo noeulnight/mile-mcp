@@ -222,7 +222,7 @@ test("MCP handshake exposes seven read tools, workspace selection and booking, a
   await client.connect(clientSide);
   try {
     const list = await client.listTools();
-    assert.equal(list.tools.length, 9);
+    assert.equal(list.tools.length, 10);
     assert.ok(!list.tools.some((tool) => tool.name === "check_reservation_conflicts"));
     assert.equal(list.tools.filter((tool) => tool.annotations?.readOnlyHint).length, 7);
     const booking = list.tools.find((tool) => tool.name === "create_reservation");
@@ -277,7 +277,7 @@ test("the real CLI supports stdio initialization and clean shutdown without a br
   try {
     await client.connect(stdio);
     const list = await client.listTools();
-    assert.equal(list.tools.length, 9);
+    assert.equal(list.tools.length, 10);
     assert.ok(!list.tools.some((tool) => tool.name === "check_reservation_conflicts"));
     const result = await client.callTool({
       name: "get_reservation",

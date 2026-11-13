@@ -80,6 +80,58 @@ export class MileApi {
     }
   }
 
+  async cancelReservation(body: unknown): Promise<void> {
+    const uncertain = () =>
+      new MileError(
+        "CANCELLATION_OUTCOME_UNKNOWN",
+        "예약 취소 결과를 확인할 수 없습니다. 자동 재시도하지 말고 예약 목록과 상세에서 취소 여부를 먼저 확인해 주세요.",
+      );
+    let response: Awaited<ReturnType<ApiTransport["send"]>>;
+    try {
+      response = await this.transport.send("/meetings/meeting-reservation", body, "DELETE");
+    } catch (error) {
+      if (
+        error instanceof MileError &&
+        ["LOGIN_REQUIRED", "AUTH_FORMAT_CHANGED"].includes(error.code)
+      ) {
+        throw error;
+      }
+      throw uncertain();
+    }
+    // Never replay cancellation: the selected occurrence or series may already be gone.
+    if (response.status === 401) {
+      throw new MileError("LOGIN_REQUIRED", "인증을 갱신한 뒤 예약의 취소 여부를 확인해 주세요.");
+    }
+    if (response.status === 403) {
+      throw new MileError("PERMISSION_DENIED", "현재 마일 계정으로 예약을 취소할 권한이 없습니다.");
+    }
+    if (response.status === 404) {
+      throw new MileError(
+        "RESERVATION_NOT_FOUND",
+        "예약을 찾을 수 없습니다. 이미 취소됐는지 확인해 주세요.",
+      );
+    }
+    if (response.status === 429) {
+      throw new MileError(
+        "RATE_LIMITED",
+        "마일 요청 한도를 초과했습니다. 잠시 후 취소 여부를 확인해 주세요.",
+      );
+    }
+    if (response.status >= 500) {
+      throw uncertain();
+    }
+    if (response.status < 200 || response.status >= 300) {
+      throw new MileError(
+        "API_ERROR",
+        `마일 취소 API가 HTTP ${response.status} 오류를 반환했습니다.`,
+      );
+    }
+    const data = response.data as { result?: unknown } | null;
+    if (!data || data.result === undefined || data.result === null || data.result === false) {
+      throw uncertain();
+    }
+  }
+
   async createReservation(body: unknown): Promise<unknown> {
     const uncertain = () =>
       new MileError(

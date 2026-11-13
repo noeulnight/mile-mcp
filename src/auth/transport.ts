@@ -4,7 +4,7 @@ import { API_ORIGIN, APP_ORIGIN } from "../mile/constants.js";
 import type { SessionStore } from "./session.js";
 
 export interface ApiTransport {
-  send(path: string, body?: unknown): Promise<{ status: number; data: unknown }>;
+  send(path: string, body?: unknown, method?: "DELETE"): Promise<{ status: number; data: unknown }>;
   refresh(): Promise<void>;
   close(): Promise<void>;
 }
@@ -52,7 +52,13 @@ export class HttpTransport implements ApiTransport {
     });
   }
 
-  private async request(path: string, body?: unknown, bearer = true, persistCookies = true) {
+  private async request(
+    path: string,
+    body?: unknown,
+    bearer = true,
+    persistCookies = true,
+    method?: "DELETE",
+  ) {
     // Never follow redirects or forward credentials to a caller-supplied origin.
     const url = new URL(path, API_ORIGIN);
     if (url.origin !== API_ORIGIN || !path.startsWith("/") || path.startsWith("//")) {
@@ -61,7 +67,7 @@ export class HttpTransport implements ApiTransport {
     const state = await this.state();
     const cookies = await state.jar.getCookieString(url.href);
     const response = await this.fetcher(url, {
-      method: body === undefined ? "GET" : "POST",
+      method: method ?? (body === undefined ? "GET" : "POST"),
       redirect: "manual",
       signal: AbortSignal.timeout(20_000),
       headers: {
@@ -87,7 +93,7 @@ export class HttpTransport implements ApiTransport {
     };
   }
 
-  async send(path: string, body?: unknown) {
+  async send(path: string, body?: unknown, method?: "DELETE") {
     return this.exclusive(async () => {
       if (path === "/auth/member/my") {
         const response = await this.request(path, body, true, false);
@@ -97,7 +103,7 @@ export class HttpTransport implements ApiTransport {
         }
         return { status: response.status, data: response.data };
       }
-      const { status, data } = await this.request(path, body);
+      const { status, data } = await this.request(path, body, true, true, method);
       return { status, data };
     });
   }
