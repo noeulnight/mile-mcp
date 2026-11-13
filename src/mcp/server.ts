@@ -44,14 +44,31 @@ export function createServer(service: MileService): McpServer {
         },
       },
       async (input: unknown) => {
+        const started = performance.now();
+        let errorCode: string | undefined;
         try {
           const result = await service.runTool(() => call(input as z.infer<z.ZodObject<S>>));
           return { content: [{ type: "text" as const, text: JSON.stringify(result) }] };
         } catch (error) {
+          const failure = publicError(error);
+          errorCode = failure.code;
           return {
             isError: true,
-            content: [{ type: "text" as const, text: JSON.stringify(publicError(error)) }],
+            content: [{ type: "text" as const, text: JSON.stringify(failure) }],
           };
+        } finally {
+          if (!writes) {
+            console.error(
+              JSON.stringify({
+                event: "mcp_query",
+                timestamp: new Date().toISOString(),
+                tool: name,
+                durationMs: Math.round(performance.now() - started),
+                success: errorCode === undefined,
+                ...(errorCode ? { errorCode } : {}),
+              }),
+            );
+          }
         }
       },
     );
