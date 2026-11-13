@@ -1,18 +1,7 @@
 import type { ApiTransport } from "../auth/transport.js";
 import { MileError } from "../errors.js";
 
-const READ_ENDPOINTS = new Set([
-  "/users/info",
-  "/users/member/list",
-  "/members/my/info",
-  "/members",
-  "/meetings/recurring-reservation/check-duplication",
-  "/meetings/meeting-room/list",
-  "/meetings/meeting-reservation/list",
-  "/meetings/meeting-reservation/detail",
-  "/meetings/meeting-reservation/my/upcoming",
-  "/meetings/meeting-reservation/my/completed",
-]);
+import { READ_ENDPOINTS } from "./constants.js";
 
 export class MileApi {
   constructor(private readonly transport: ApiTransport) {}

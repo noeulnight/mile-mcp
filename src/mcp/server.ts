@@ -63,6 +63,7 @@ export function createServer(service: MileService): McpServer {
                 event: "mcp_query",
                 timestamp: new Date().toISOString(),
                 tool: name,
+                params: input,
                 durationMs: Math.round(performance.now() - started),
                 success: errorCode === undefined,
                 ...(errorCode ? { errorCode } : {}),

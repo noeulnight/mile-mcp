@@ -1,6 +1,6 @@
 import { CookieJar } from "tough-cookie";
-import { MileError } from "../errors.js";
-import { API_ORIGIN, APP_ORIGIN } from "../mile/constants.js";
+import { MileError, publicError } from "../errors.js";
+import { API_ORIGIN, APP_ORIGIN, READ_ENDPOINTS } from "../mile/constants.js";
 import type { SessionStore } from "./session.js";
 
 export interface ApiTransport {
@@ -66,31 +66,78 @@ export class HttpTransport implements ApiTransport {
     }
     const state = await this.state();
     const cookies = await state.jar.getCookieString(url.href);
-    const response = await this.fetcher(url, {
-      method: method ?? (body === undefined ? "GET" : "POST"),
-      redirect: "manual",
-      signal: AbortSignal.timeout(20_000),
-      headers: {
-        Origin: APP_ORIGIN,
-        Referer: `${APP_ORIGIN}/`,
-        ...(bearer ? { Authorization: `Bearer ${state.token}` } : {}),
-        ...(cookies ? { Cookie: cookies } : {}),
-        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
-      },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    });
-    const updatedCookies = response.headers.getSetCookie();
-    for (const cookie of updatedCookies) {
-      await state.jar.setCookie(cookie, url.href);
+    const requestMethod = method ?? (body === undefined ? "GET" : "POST");
+    const started = performance.now();
+    let status: number | undefined;
+    let responseData: unknown;
+    let errorCode: string | undefined;
+    try {
+      const response = await this.fetcher(url, {
+        method: requestMethod,
+        redirect: "manual",
+        signal: AbortSignal.timeout(20_000),
+        headers: {
+          Origin: APP_ORIGIN,
+          Referer: `${APP_ORIGIN}/`,
+          ...(bearer ? { Authorization: `Bearer ${state.token}` } : {}),
+          ...(cookies ? { Cookie: cookies } : {}),
+          ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+        },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      });
+      status = response.status;
+      responseData = await response.json().catch(() => null);
+      const updatedCookies = response.headers.getSetCookie();
+      for (const cookie of updatedCookies) {
+        await state.jar.setCookie(cookie, url.href);
+      }
+      if (bearer && persistCookies && updatedCookies.length) {
+        await this.persist(state);
+      }
+      return {
+        status: response.status,
+        data: responseData,
+        state,
+      };
+    } catch (error) {
+      errorCode = publicError(error).code;
+      throw error;
+    } finally {
+      if (READ_ENDPOINTS.has(path) && method === undefined) {
+        console.error(
+          JSON.stringify(
+            {
+              event: "mile_query",
+              timestamp: new Date().toISOString(),
+              method: requestMethod,
+              path,
+              params: body ?? {},
+              durationMs: Math.round(performance.now() - started),
+              success:
+                errorCode === undefined && status !== undefined && status >= 200 && status < 300,
+              ...(status === undefined ? {} : { httpStatus: status }),
+              ...(errorCode ? { errorCode } : {}),
+              ...(responseData === undefined ? {} : { response: responseData }),
+            },
+            (key, value: unknown) => {
+              if (
+                /^(authorization|proxyauthorization|accesstoken|refreshtoken|idtoken|token|cookies?|cookiejar|setcookie|password|clientsecret|apikey)$/i.test(
+                  key.replace(/[-_]/g, ""),
+                )
+              ) {
+                return "[REDACTED]";
+              }
+              if (typeof value !== "string") {
+                return value;
+              }
+              return [state.token, cookies]
+                .filter(Boolean)
+                .reduce((text, secret) => text.replaceAll(secret, "[REDACTED]"), value);
+            },
+          ),
+        );
+      }
     }
-    if (bearer && persistCookies && updatedCookies.length) {
-      await this.persist(state);
-    }
-    return {
-      status: response.status,
-      data: (await response.json().catch(() => null)) as unknown,
-      state,
-    };
   }
 
   async send(path: string, body?: unknown, method?: "DELETE") {
